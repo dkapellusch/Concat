@@ -36,10 +36,12 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
     bool ShouldBeIncluded(string input) => includeGlobber.IsMatch(input) || !excludeGlobber.IsMatch(input);
 
     var directories = Directory.GetDirectories(cliArgs.InputPath, "*", SearchOption.AllDirectories)
+        .Concat(new[] { cliArgs.InputPath })
         .Select(d => $"{d}/")
         .Where(ShouldBeIncluded)
         .Order()
         .ToArray();
+
 
     await using var outputFile = new StreamWriter(cliArgs.OutputPath, append: true);
 
