@@ -35,6 +35,12 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
     var includeGlobber = new Globber(cliArgs.ExplicitInclude ?? string.Empty);
     bool ShouldBeIncluded(string input) => includeGlobber.IsMatch(input) || !excludeGlobber.IsMatch(input);
 
+    if (!string.IsNullOrWhiteSpace(cliArgs.Test))
+    {
+        Console.WriteLine(ShouldBeIncluded(cliArgs.Test));
+        return;
+    }
+
     var directories = Directory.GetDirectories(cliArgs.InputPath, "*", SearchOption.AllDirectories)
         .Concat(new[] { cliArgs.InputPath })
         .Select(d => $"{d}/")
@@ -44,6 +50,13 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
 
 
     await using var outputFile = new StreamWriter(cliArgs.OutputPath, append: true);
+    var output = async (string line) =>
+    {
+        if (cliArgs.WriteToStdOut)
+            Console.WriteLine(line);
+        else
+            await outputFile.WriteLineAsync(line);
+    };
 
     foreach (var directory in directories)
     {
@@ -57,27 +70,27 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
             if (!ShouldBeIncluded(file))
                 continue;
 
-            await ProcessAndWriteFileAsync(file, outputFile);
+            await ProcessAndWriteFileAsync(file, output);
         }
     }
 
     Console.WriteLine("Processing complete. Output saved to " + cliArgs.OutputPath);
 }
 
-async Task ProcessAndWriteFileAsync(string file, StreamWriter outputFile)
+async Task ProcessAndWriteFileAsync(string file, Func<string, Task> writeOutput)
 {
     try
     {
         var content = await File.ReadAllTextAsync(file);
-        await outputFile.WriteLineAsync(file);
-        await outputFile.WriteLineAsync(content);
-        await outputFile.WriteLineAsync();
+        await writeOutput(file);
+        await writeOutput(content);
+        await writeOutput("");
     }
     catch (Exception ex)
     {
         Console.WriteLine($"Error reading from file {file}: {ex.Message}");
-        await outputFile.WriteLineAsync($"Error reading file: {ex.Message}");
-        await outputFile.WriteLineAsync();
+        await writeOutput($"Error reading file: {ex.Message}");
+        await writeOutput("");
     }
 }
 
@@ -137,6 +150,14 @@ internal class CommandLineArgs
     [Option('n', "include", Required = false, HelpText = "Explicit include, overrides all exclude matches", Default = null)]
 
     public string? ExplicitInclude { get; set; }
+
+    [Option('t', "Test", Required = false, HelpText = "Controls if this command should just test a given input path to see if it would be matched", Default = null)]
+
+    public string? Test { get; set; } = null;
+
+    [Option('w', "WriteStdOut", Required = false, HelpText = "Controls if this command should output to stdout instead.", Default = false)]
+
+    public bool WriteToStdOut { get; set; } = false;
 }
 
 internal class Globber
