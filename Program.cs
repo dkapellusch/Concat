@@ -18,7 +18,7 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
         return;
     }
 
-    if (File.Exists(cliArgs.OutputPath))
+    if (File.Exists(cliArgs.OutputPath) && !string.IsNullOrWhiteSpace(cliArgs.Test))
     {
         if (!cliArgs.OverwriteOutput)
         {
@@ -151,7 +151,7 @@ internal class CommandLineArgs
 
     public string? ExplicitInclude { get; set; }
 
-    [Option('t', "Test", Required = false, HelpText = "Controls if this command should just test a given input path to see if it would be matched", Default = null)]
+    [Option('t', "Test", Required = false, HelpText = "Controls if this command should just test a given input path to see if it would be matched.", Default = null)]
 
     public string? Test { get; set; } = null;
 
