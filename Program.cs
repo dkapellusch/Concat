@@ -46,34 +46,66 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
         .Order()
         .ToArray();
 
+    var outputFileIndex = 0;
+    var currentOutputPath = cliArgs.OutputPath;
+    var currentOutputSize = 0L;
+    var totalSize = directories.Select(directory => Directory.GetFiles(directory, "*", SearchOption.TopDirectoryOnly))
+        .SelectMany(files => files.Where(file => (cliArgs.IncludeBinaryFiles || !IsBinary(file)) && new FileInfo(file).Length <= cliArgs.MaxFileSize).Where(ShouldBeIncluded))
+        .Sum(file => new FileInfo(file).Length);
 
-    await using var outputFile = new StreamWriter(cliArgs.OutputPath, true);
+
+    var targetChunkSize = cliArgs.OutputChunks > 1 ? (totalSize + cliArgs.OutputChunks - 1) / cliArgs.OutputChunks : long.MaxValue;
+
+    var outputFile = new StreamWriter(currentOutputPath, true);
+
     var output = async (string line) =>
     {
+        var lineSize = System.Text.Encoding.UTF8.GetByteCount(line + Environment.NewLine);
+
+        if (currentOutputSize + lineSize > targetChunkSize && outputFileIndex < cliArgs.OutputChunks)
+        {
+            outputFile.Dispose();
+            outputFileIndex++;
+            currentOutputPath = $"{Path.GetDirectoryName(cliArgs.OutputPath)}/{Path.GetFileNameWithoutExtension(cliArgs.OutputPath)}{outputFileIndex}{Path.GetExtension(cliArgs.OutputPath)}";
+            outputFile = new StreamWriter(currentOutputPath, true);
+            currentOutputSize = 0;
+        }
+
         if (cliArgs.WriteToStdOut)
             Console.WriteLine(line);
         else
             await outputFile.WriteLineAsync(line);
+
+        currentOutputSize += lineSize;
     };
 
     foreach (var directory in directories)
     {
         var files = Directory.GetFiles(directory, "*", SearchOption.TopDirectoryOnly);
 
-        foreach (var file in files.Where(file => cliArgs.IncludeBinaryFiles || !IsBinary(file)).Where(ShouldBeIncluded))
+        foreach (var file in files.Where(file => (cliArgs.IncludeBinaryFiles || !IsBinary(file)) && new FileInfo(file).Length <= cliArgs.MaxFileSize).Where(ShouldBeIncluded))
         {
-            await ProcessAndWriteFileAsync(file, output);
+            await ProcessAndWriteFileAsync(file, output, cliArgs.MaxFileSize);
         }
     }
 
+    outputFile?.Dispose();
     Console.WriteLine("Processing complete. Output saved to " + cliArgs.OutputPath);
 }
 
-async Task ProcessAndWriteFileAsync(string file, Func<string, Task> writeOutput)
+async Task ProcessAndWriteFileAsync(string file, Func<string, Task> writeOutput, long maxSize)
 {
     try
     {
         var content = await File.ReadAllTextAsync(file);
+        var fileSize = System.Text.Encoding.UTF8.GetByteCount(content);
+
+        if (fileSize > maxSize)
+        {
+            throw new Exception(
+                $"File '{file}''s size {fileSize} exceeds the maximum output file size of {maxSize} bytes. To include this file please increase the maximum size using the --size flag.");
+        }
+
         await writeOutput(file);
         await writeOutput(content);
         await writeOutput("");
