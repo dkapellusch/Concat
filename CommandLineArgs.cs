@@ -17,7 +17,7 @@ internal class CommandLineArgs
     [Option('f', "overwrite", Required = false, HelpText = "Controls if the output file should be overwritten if it exists", Default = true)]
     public bool OverwriteOutput { get; set; } = true;
 
-    [Option('c', "concatIgnore", Required = false, HelpText = "Which path does the .concatIgnore live?", Default = "~/ .concatIgnore")]
+    [Option('c', "concatIgnore", Required = false, HelpText = "Which path does the .concatIgnore live?", Default = "~/.concatIgnore")]
     public string ConcatIgnorePath { get; set; } = "/Users/DKapellu/bin/.concatIgnore";
 
     [Option('n', "include", Required = false, HelpText = "Explicit include, overrides all exclude matches", Default = null)]
