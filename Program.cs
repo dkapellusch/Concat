@@ -1,4 +1,5 @@
 ﻿using CommandLine;
+using static Compress;
 
 var parser = Parser.Default.ParseArguments<CommandLineArgs>(args)
     .WithNotParsed(errors => { Console.WriteLine("Error parsing command line arguments"); });
@@ -13,7 +14,7 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
         return;
     }
 
-    if (File.Exists(cliArgs.OutputPath) && !string.IsNullOrWhiteSpace(cliArgs.Test))
+    if (File.Exists(cliArgs.OutputPath) && string.IsNullOrWhiteSpace(cliArgs.Test))
     {
         if (!cliArgs.OverwriteOutput)
         {
@@ -25,11 +26,27 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
         File.Delete(cliArgs.OutputPath);
     }
 
-    var concatIgnorePaths = File.Exists(cliArgs.ConcatIgnorePath) ? File.ReadAllText(cliArgs.ConcatIgnorePath) : string.Empty;
+    string concatIgnorePaths;
+    if (File.Exists(cliArgs.ConcatIgnorePath))
+    {
+        concatIgnorePaths = await File.ReadAllTextAsync(cliArgs.ConcatIgnorePath);
+    }
+    else
+    {
+        Console.WriteLine($"Warning: .concatIgnore file not found at {cliArgs.ConcatIgnorePath}. Using default exclude patterns.");
+        concatIgnorePaths = string.Empty;
+    }
+
     var excludeGlobber = new Globber($"{cliArgs.SkippedPaths} {concatIgnorePaths}");
     var includeGlobber = new Globber(cliArgs.ExplicitInclude ?? string.Empty);
-
-    bool ShouldBeIncluded(string input) => includeGlobber.IsMatch(input) || !excludeGlobber.IsMatch(input);
+    
+    bool ShouldBeIncluded(string input)
+    {
+        if (cliArgs.IgnoreHidden && IsHidden(input))
+            return false;
+        
+        return includeGlobber.IsMatch(input) || !excludeGlobber.IsMatch(input);
+    }
 
     if (!string.IsNullOrWhiteSpace(cliArgs.Test))
     {
@@ -42,6 +59,7 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
     var directories = Directory.GetDirectories(cliArgs.InputPath, "*", SearchOption.AllDirectories)
         .Concat(new[] { cliArgs.InputPath })
         .Select(d => $"{d}/")
+        .Where(d => !cliArgs.IgnoreHidden || !IsHidden(d))
         .Where(ShouldBeIncluded)
         .Order()
         .ToArray();
@@ -74,16 +92,24 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
         if (cliArgs.WriteToStdOut)
             Console.WriteLine(line);
         else
+        {
+            if (cliArgs.CompressOutput)
+                line = CompressOutput(line, cliArgs.CompressionLevel);
             await outputFile.WriteLineAsync(line);
+        }
 
         currentOutputSize += lineSize;
     };
 
-    foreach (var directory in directories)
+     foreach (var directory in directories)
     {
         var files = Directory.GetFiles(directory, "*", SearchOption.TopDirectoryOnly);
 
-        foreach (var file in files.Where(file => (cliArgs.IncludeBinaryFiles || !IsBinary(file)) && new FileInfo(file).Length <= cliArgs.MaxFileSize).Where(ShouldBeIncluded))
+        foreach (var file in files.Where(file => 
+            (cliArgs.IncludeBinaryFiles || !IsBinary(file)) && 
+            new FileInfo(file).Length <= cliArgs.MaxFileSize &&
+            (!cliArgs.IgnoreHidden || !IsHidden(file)) &&
+            ShouldBeIncluded(file)))
         {
             await ProcessAndWriteFileAsync(file, output, cliArgs.MaxFileSize);
         }
@@ -118,6 +144,12 @@ async Task ProcessAndWriteFileAsync(string file, Func<string, Task> writeOutput,
     }
 }
 
+
+bool IsHidden(string path)
+{
+    return Path.GetFileName(path).StartsWith(".");
+}
+
 bool IsBinary(string filePath)
 {
     const int sampleSize = 1024;
@@ -149,3 +181,4 @@ bool IsPrintable(byte b)
     // ASCII printable characters range from 0x20 (space) to 0x7E (tilde), including newlines (0x0A and 0x0D)
     return b is >= 0x20 and <= 0x7E or 0x0A or 0x0D;
 }
+

@@ -4,13 +4,14 @@ internal class Globber
 {
     private readonly List<Glob> _globs = new();
 
-    public Globber(string patterns) : this(patterns.Split(Environment.NewLine).SelectMany(s => s.Split(" ")).Select(s => s.Trim()).Where(s => !string.IsNullOrWhiteSpace(s)))
+    public Globber(string patterns)
+        : this(patterns.Split(new[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
     {
     }
 
     public Globber(IEnumerable<string> patterns)
     {
-        Patterns = patterns.ToArray();
+        Patterns = patterns.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
         _globs.AddRange(Patterns.Select(Glob.Parse));
     }
 
