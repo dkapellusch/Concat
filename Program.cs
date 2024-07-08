@@ -22,7 +22,6 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
             return;
         }
 
-        Console.WriteLine("The specified output file already exists, overwriting it.");
         File.Delete(cliArgs.OutputPath);
     }
 
@@ -89,12 +88,13 @@ async Task ProcessFilesAsync(CommandLineArgs cliArgs)
             currentOutputSize = 0;
         }
 
+        if (cliArgs.CompressOutput)
+            line = CompressOutput(line, cliArgs.CompressionLevel);
+        
         if (cliArgs.WriteToStdOut)
             Console.WriteLine(line);
         else
         {
-            if (cliArgs.CompressOutput)
-                line = CompressOutput(line, cliArgs.CompressionLevel);
             await outputFile.WriteLineAsync(line);
         }
 
@@ -181,4 +181,3 @@ bool IsPrintable(byte b)
     // ASCII printable characters range from 0x20 (space) to 0x7E (tilde), including newlines (0x0A and 0x0D)
     return b is >= 0x20 and <= 0x7E or 0x0A or 0x0D;
 }
-
